@@ -15,4 +15,4 @@ spec:
         image: IMAGE
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 9090
+        - containerPort: 8080

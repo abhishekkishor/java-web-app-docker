@@ -1,36 +1,107 @@
 node{
+    
     def buildNumber = BUILD_NUMBER
-    stage("Git CheckOut"){
-        git url: 'https://github.com/MithunTechnologiesDevOps/java-web-app-docker.git',branch: 'master'
-    }
     
-    stage(" Maven Clean Package"){
-      def mavenHome =  tool name: "Maven-3.6.1", type: "maven"
-      def mavenCMD = "${mavenHome}/bin/mvn"
-      sh "${mavenCMD} clean package"
-    } 
+    def masterLogin = 'ssh -o StrictHostKeyChecking=no ubuntu@172.31.41.85'
     
-    stage("Build Dokcer Image") {
-         sh "docker build -t dockerhandson/java-web-app:${buildNumber} ."
-    }
-    
-    stage("Docker Push"){
-        withCredentials([string(credentialsId: 'Docker_Hub_Pwd', variable: 'Docker_Hub_Pwd')]) {
-          sh "docker login -u dockerhandson -p ${Docker_Hub_Pwd}"
-        }
-        sh "docker push dockerhandson/java-web-app:${buildNumber}"
+    stage("Git Clone"){
+        
+        echo "===============================Pulling Application Code======================================="
+        
+        git branch: 'master', url: 'https://github.com/abhishekkishor/java-web-app-docker.git'
+        
+        echo "==================================Application Code Pulled====================================="
         
     }
     
-    // Remove local image in Jenkins Server
-    stage("Remove Local Image"){
-        sh "docker rmi -f dockerhandson/java-web-app:${buildNumber}"
+    stage("Maven Clean Package"){
+    
+        echo "==================================Building Maven Package======================================"
+        
+        sh "mvn clean package"
+        
+    echo "================================Maven Package Built (WAR)========================================="
+        
     }
     
-    stage("Deploy to docker swarm cluster"){
-        sshagent(['Docker_Swarm_Manager_Dev']) {
-            sh 'ssh -o StrictHostKeyChecking=no ubuntu@172.31.47.232 docker service rm javawebapp || true'
-            sh "ssh ubuntu@172.31.47.232 docker service create --name javawebapp -p 8080:8080 --replicas 2 dockerhandson/java-web-app:${buildNumber}"
+    stage("Archiving Artifact"){
+        
+        echo "===================================Archiving Artifact========================================"
+        
+        archiveArtifacts artifacts: '**/*.war'
+    }
+    
+    stage("Build Docker Image"){
+        
+        echo "==================================Building Docker Image======================================="
+        
+        sh "docker build -t abhishekkishor1/java-web-app-swarm:${buildNumber} ."
+        
+        echo "===============================Docker Image Built Successfully================================"
+    }
+    
+    stage("Docker Hub Login & Pushing Image"){
+        
+        echo "======================================Docker Login============================================"
+        
+        withCredentials([string(credentialsId: 'abhishekkishor1', variable: 'Docker_Hub_Pwd')]) {
+            
+            sh "docker login -u abhishekkishor1 -p ${Docker_Hub_Pwd}"
+            
+        echo "==================================Docker Login Successfully==================================="
         }
     }
+    
+    stage("Push Docker Image To DockerHub"){
+        
+        echo "=======================================Pushing Docker Image==================================="
+        
+        sh "docker push abhishekkishor1/java-web-app-swarm:${buildNumber}"
+        
+        echo "=================================Docker Image Pushed Successfully============================="
+    }
+    
+    stage("Connect With Docker Swarm Manager Server"){
+        
+        echo "==============================Login In Docker Swarm Manager Server============================"
+        
+        sshagent(['Docker-Swarm-Master-SSH']) {
+            
+            sh "ssh -o StrictHostKeyChecking=no ubuntu@172.31.41.85"
+            
+            echo "===================Logged In Docker Swarm Manager Server Successfully====================="
+            
+            echo "============================Initializing Docker Swarm Manager============================="
+            
+            sh "${masterLogin} docker swarm init || true"
+            
+            echo "======================Docker Swarm Manager Initialized Successfully======================="
+            
+            echo "============================Listing Docker Service==============================="
+            
+            sh "${masterLogin} docker service ls"
+            
+            echo "============================Removing Running Docker Service==============================="
+            
+            sh "${masterLogin} docker service rm javawebapp || true"
+            
+            echo "========================Removed Running Docker Service Successfully======================="
+            
+            echo "=================================Listing Docker Nodes====================================="
+            
+            sh "${masterLogin} docker node ls"
+            
+            echo "=======================Creating Docker Service Via Docker Swarm========================="
+            
+            sh "${masterLogin} docker service create --name javawebapp -p 8080:8080 --replicas 2 abhishekkishor1/java-web-app-swarm:${buildNumber}"
+            
+            echo "================================Docker Service Created==================================="
+            
+            echo "============================Listing Docker Service==============================="
+            
+            sh "${masterLogin} docker service ls"
+            
+        }
+    }
+
 }
